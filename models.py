@@ -1,7 +1,14 @@
 
+# xxx xgb results
+# xxx get all data for checks
+# P5/P6
+# usecase
+# imputation
+
+
 # is there a difference between imputed and not imputed
 # fix imputation
-import os
+import os, sys
 import pandas as pd
 import numpy as np
 from datetime import datetime
@@ -56,19 +63,21 @@ features_dict = {
 
 }
 
-#DESCRIPTORS = ['gl-1', 'gL-2', 'gm-3', 'gM-4', 'gMs-5', 'gMp-6', 'gMpc-7', 'gc-8', 'gmpc-9', 'gms-10', 'gmp-11']
+#DESCRIPTORS = ['gM_4', 'gMp_6']
 DESCRIPTORS = ['gl_1', 'gL_2', 'gm_3', 'gM_4', 'gMs_5', 'gMp_6', 'gMpc_7', 'gc_8', 'gmpc_9', 'gms_10', 'gmp_11']
-#DESCRIPTORS = ['gc_8']
-#DESCRIPTORS = ['gM']
 
 descriptor_all = list(set(''.join(DESCRIPTORS)))
 
+#CHECK_TYPES = ['S2']
 CHECK_TYPES = ['S2', 'P5', 'S3']
 
-MODEL_TYPES = [ 'ridge'] #'xgb',
-MODEL_TYPES = ['ridge']
-MODEL_TYPES = ['xgb']
-EQUALIZE = True
+#MODEL_TYPES = ['ridge']
+MODEL_TYPES = ['xgb', 'ridge']
+EQUALIZE = False
+
+if len(sys.argv):
+    if sys.argv[1] == 'equal':
+        EQUALIZE == True
 
 def get_features(descriptor):
   features = []
@@ -78,7 +87,6 @@ def get_features(descriptor):
       features += features_dict[l]
   print(features)
   return(features)
-
 
 def fit_model(check_type, model_type, descriptor, equalize=False):
     if equalize:
@@ -90,6 +98,7 @@ def fit_model(check_type, model_type, descriptor, equalize=False):
     Y_PATH = '%s/y_data_%s_%s_%s.csv'%(out_path, check_type, model_type, descriptor)
     SCORES_PATH = '%s/scores_data_%s_%s_%s.csv'%(out_path, check_type, model_type, descriptor)
     N_DATA_PATH = '%s/n_data_%s_%s_%s.csv'%(out_path, check_type, model_type, descriptor)
+    BEST_PARAMS_PATH = '%s/best_params_%s_%s_%s.csv'%(out_path, check_type, model_type, descriptor)
 
     df = pd.read_csv(DATA_PATH)
     #print(df.columns)
@@ -140,15 +149,19 @@ def fit_model(check_type, model_type, descriptor, equalize=False):
 
     if 'l' in descriptor or (equalize and 'l' in descriptor_all):
         df = df.loc[df['missing_last'] < len(features_last)]
+        df = df.loc[df['before_exam'] == True ]
     if 'm' in descriptor or (equalize and 'm' in descriptor_all):
         df = df.loc[df['missing_mean'] < len(features_mean)]
+        df = df.loc[df['before_exam'] == True ]
     if 's' in descriptor or (equalize and 's' in descriptor_all):
         df = df.loc[df['missing_sd'] < len(features_sd)]
+        df = df.loc[df['before_exam'] == True ]
     print(df.shape)
     if 'p' in descriptor or (equalize and 'p' in descriptor_all):
         df = df.loc[df['missing_poly'] == 0]
         df = df.loc[df['N'] >= MIN_POINTS_POLY]
         df = df.loc[df['age_diff'] >= AGE_DIFF]
+        df = df.loc[df['before_exam'] == True ]
     print(df.shape)
     if 'c' in descriptor or (equalize and 'c' in descriptor_all):
         df = df.loc[df['missing_check'] <= MAX_MISS_SCALE]
@@ -185,14 +198,15 @@ def fit_model(check_type, model_type, descriptor, equalize=False):
     nfeat_all = []
     scores_target = [] 
     missing_all = []
+    best_params_all = []
     for target in WLES:
         print(target)
         if model_type == 'xgb':
-            y, ypred, r2, mse, missing, nsub, nfeat = fit_XGB_model(df, features, target, descriptor, shuffle=False)
+            y, ypred, r2, mse, missing, nsub, nfeat, best_params = fit_XGB_model(df, features, target, descriptor, shuffle=False)
         else:
-            y, ypred, r2, mse, missing, nsub, nfeat = fit_regression_model(df, features, target, model_type, shuffle=False)
+            y, ypred, r2, mse, missing, nsub, nfeat, best_params = fit_regression_model(df, features, target, model_type, shuffle=False)
             #y, ypred, scores, missing = fit_XGB_model(df, features, target)
-    
+
         y_all.append(y)
         ypred_all.append(ypred)
         r2_all.append(r2)
@@ -202,12 +216,13 @@ def fit_model(check_type, model_type, descriptor, equalize=False):
         y_target.extend(len(y)*[target])
         scores_target.extend(len(r2)*[target])
         missing_all.append(missing)
+        best_params_all.append(best_params)
     
     y_data = pd.DataFrame({'check_type': check_type,
                            'target': y_target, 
                            'y': np.concatenate(y_all), 
                            'ypred': np.concatenate(ypred_all), 
-                           'missing': np.concatenate(missing_all, dtype = int) })
+                           'missing': np.concatenate(missing_all, dtype = int)})
                        
     scores_data = pd.DataFrame({'check_type': check_type,
                                 'target': scores_target, 
@@ -218,11 +233,14 @@ def fit_model(check_type, model_type, descriptor, equalize=False):
                            'target': WLES, 
                            'nsub': np.array(nsub_all),
                            'nfeat': np.array(nfeat_all)})
-
-
+                      
+    best_params = pd.DataFrame({k: [dic[k] for dic in best_params_all] 
+    for k in best_params_all[0]})
+    
     y_data.to_csv(Y_PATH, index=False)
     scores_data.to_csv(SCORES_PATH, index=False)
     n_data.to_csv(N_DATA_PATH, index=False)
+    best_params.to_csv(BEST_PARAMS_PATH, index=False)
     
 for model_type in MODEL_TYPES: 
     for check_type in CHECK_TYPES:

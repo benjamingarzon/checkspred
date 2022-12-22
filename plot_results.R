@@ -2,6 +2,14 @@ rm(list = ls())
 library(ggplot2)
 library(dplyr)
 library(stringr)
+library(reshape2)
+
+base_size = 16
+
+theme_set(
+  theme_bw(
+    base_size = base_size)  #base_family = "",  #base_line_size = base_size/22,  #base_rect_size = base_size/22)
+  )
 
 WIDTH = 10.24
 HEIGHT = 8.68
@@ -9,7 +17,7 @@ DPI = 300
 setwd("~/checkspred")
 
 OUT_PATH = "./out/not_equalized/"
-#OUT_PATH = "./out/equalized/" 
+OUT_PATH = "./out/equalized/" 
 
 MODEL_RESULTS = 'y_data_S2_ridge_gc_8.csv'  # select model of interest to plot predictions and missingness
 
@@ -31,6 +39,9 @@ print(scores_files)
 # check results
 scores_data = bind_rows(lapply(scores_files, read_file), .id = 'index')
 scores_data$r2[ scores_data$r2<0 ] = 0
+
+# remove wle
+scores_data = scores_data %>% mutate(target = str_split_i(target, "_", 2))
 
 scores.mean = scores_data %>% group_by(target, check_type, model_type, descriptor) %>% 
   summarise(r2.mean = mean(r2, na.rm=T), r2.sd = sd(r2, na.rm=T),
@@ -80,6 +91,8 @@ ggsave(file.path(OUT_PATH, "./figs/n.png"), plot = myplot.n, dpi = DPI, width = 
 Y_FILE = file.path(OUT_PATH, MODEL_RESULTS)
 y_data = read.csv(Y_FILE)
 
+y_data = y_data %>% mutate(target = str_split_i(target, "_", 2))
+
 myplot.y = ggplot(y_data, aes(x = y, y = ypred)) + 
   geom_point(size = 0.3) + 
   facet_wrap(. ~ target) + 
@@ -95,4 +108,23 @@ myplot.miss = ggplot(y_data, aes(x = as.factor(missing), y = y-ypred, fill = mis
   xlab('Missing') + theme(legend.position = 'none')
 print(myplot.miss)
 ggsave(file.path(OUT_PATH, "./figs/missing.png"), plot = myplot.miss, dpi = DPI, width = WIDTH, height = HEIGHT)
+
+################################################################################
+# plot parameters
+################################################################################
+
+best_params_files = list.files(OUT_PATH,  pattern = glob2rx("best_params*"))
+print(best_params_files)
+
+# check results
+best_params_data = bind_rows(lapply(best_params_files, read_file), .id = 'index')
+best_params.melt = melt(best_params_data, id = c("index", "model_type", "descriptor"), na.rm=T, variable.name = "parameter")
+myplot.best_params = ggplot(best_params.melt, aes(x = value, fill = descriptor)) + 
+   geom_histogram(alpha = 0.5) + 
+   ylab('Frequency') +
+   xlab('Parameter value') +
+   facet_grid( model_type + descriptor ~ parameter) +
+   theme(legend.position="bottom", legend.title=element_blank())
+print(myplot.best_params)
+ggsave(file.path(OUT_PATH, "./figs/best_params.png"), plot = myplot.best_params, dpi = DPI, width = WIDTH, height = HEIGHT)
 

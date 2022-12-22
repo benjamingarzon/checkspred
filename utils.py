@@ -25,7 +25,6 @@ MIN_AGE = 6
 res_names = ['age', 'gender', 'age_diff', 'N', 'mean', 'sd', 
 'last', 'mean_1', 'sd_1', 'mean_2', 'sd_2'] + ['degree_%d'%i for i in range(DEGREE+1)]
 
-
 def fit_regression_model(df, features, target, model_type='ridge', nfolds=10, shuffle=False):
     
     y = df[target] 
@@ -41,8 +40,8 @@ def fit_regression_model(df, features, target, model_type='ridge', nfolds=10, sh
     if model_type == 'enet':
         lm = ElasticNetCV(l1_ratio=[.1, .5, .7, .9, .95, .99, 1], n_alphas = 10, random_state=0) 
     if model_type == 'ridge':
-        lm = RidgeCV(alphas=np.logspace(-6, 6, 13))
-    
+        lm = RidgeCV(alphas=np.logspace(-3, 5, 9))
+
     pipeline =  Pipeline([
                 ('imputer', IterativeImputer(max_iter=100, random_state=0)),
                 ('scaler', StandardScaler()),
@@ -55,6 +54,9 @@ def fit_regression_model(df, features, target, model_type='ridge', nfolds=10, sh
     r2_mean = r2.mean()
     mse_mean = mse.mean()
     
+    pipeline.fit(X, y)
+    best_params = {'alpha': pipeline.named_steps['lm'].alpha_}
+
     #if r2_mean < 0:
     #    print(X)    
     #    print(r2)
@@ -65,7 +67,7 @@ def fit_regression_model(df, features, target, model_type='ridge', nfolds=10, sh
     #print(pearsonr(ypred, y))
     #print(scores)
     print(f"{model_type}: {r2_mean:.3f}")
-    return y.values, ypred, r2, mse, missing, X.shape[0], X.shape[1]
+    return y.values, ypred, r2, mse, missing, X.shape[0], X.shape[1], best_params
 
 
 def fit_XGB_model(df, features, target, descriptor, innern = 10, outern = 10, shuffle=False, train_only=False):
@@ -86,11 +88,6 @@ def fit_XGB_model(df, features, target, descriptor, innern = 10, outern = 10, sh
 #        tree_method="hist"
     )
     
-    #xgb = XGBClassifier( learning_rate =0.1, n_estimators=150, max_depth=5,
-    # min_child_weight=1, gamma=0, subsample=0.8, colsample_bytree=0.8,
-    # objective= 'binary:logistic', eval_metric = 'auc', seed=27, use_label_encoder = False, verbosity = 0, 
-    # silent = True, n_jobs = 20, scale_pos_weight = counter[0] / counter[1])
-    
     xgb_estimator =  Pipeline([
                 ('imputer', IterativeImputer(max_iter=10, random_state=0)),
                 ('scaler', StandardScaler()),
@@ -101,11 +98,13 @@ def fit_XGB_model(df, features, target, descriptor, innern = 10, outern = 10, sh
     outer_cv = KFold(n_splits=outern, shuffle=True)
 
     param_grid = {
-     'xgb__eta': [0.01, 0.05, 0.1, 0.15],
-#     'xgb__max_depth':[3, 4],
-#     'xgb__min_child_weight': [1, 3],
-     'xgb__reg_alpha':[2, 5, 10, 15],
-     'xgb__n_estimators':[30, 40, 50, 60, 70]
+     #'xgb__min_child_weight': [1, 3], #Minimum sum of instance weight (hessian) needed in a child. 
+     'xgb__eta': [0.2], #[0.01, 0.05, 0.1, 0.15], # Step size shrinkage used in update to prevents overfitting [0, 1]
+     'xgb__max_depth':[4, 6, 8], # Maximum depth of a tree. Increasing this value will make the model more complex and more likely to overfit. 
+     'xgb__gamma': [1, 3], #Minimum loss reduction required to make a further partition on a leaf node of the tree. [0, inf]
+     'xgb__reg_alpha':[0, 10, 20], # l1 reg degault =0
+     'xgb__reg_lambda':[1, 10, 20], # l2 reg default=1
+     'xgb__n_estimators':[30, 60, 90] # number of trees
     }
 
     pipeline = GridSearchCV(estimator = xgb_estimator, 
@@ -129,22 +128,21 @@ def fit_XGB_model(df, features, target, descriptor, innern = 10, outern = 10, sh
        mse = np.zeros(outern)
 
     pipeline.fit(X, y)
-    #pipeline.grid_scores_, pipeline.best_params_, pipeline.best_score_
-#    plot_grid_pars(pipeline, param_grid, 'eta',  'reg_alpha', 'xgb', target) #, 'max_depth', 'min_child_weight')
-    plot_grid_pars(pipeline, param_grid, 'n_estimators',  'reg_alpha', 'xgb', target, descriptor) #, 'max_depth', 'min_child_weight')
-#    plot_grid_pars(pipeline, param_grid, 'n_estimators',  'max_depth', 'xgb', target, descriptor) #, 'max_depth', 'min_child_weight')
-    plot_grid_pars(pipeline, param_grid, 'eta',  'n_estimators', 'xgb', target, descriptor) #, 'max_depth', 'min_child_weight')
+#    plot_grid_pars(pipeline, param_grid, 'n_estimators',  'reg_alpha', 'xgb', target, descriptor) #, 'max_depth', 'min_child_weight')
+#    plot_grid_pars(pipeline, param_grid, 'eta',  'n_estimators', 'xgb', target, descriptor) #, 'max_depth', 'min_child_weight')
+#    plot_grid_pars(pipeline, param_grid, 'max_depth',  'reg_alpha', 'xgb', target, descriptor) #, 'max_depth', 'min_child_weight')
+
 #    plt.get_figure().savefig('./data/', dpi = 300)
     model = pipeline.best_estimator_.named_steps['xgb'].get_booster()
     model.feature_names = features
+    best_params = pipeline.best_params_
     
     plt.figure(figsize=(8,8))
     plot_importance(model)
     plt.legend()
     plt.savefig(f"./figs/importance_{target}_{descriptor}.png")
 
-    return y.values, ypred, r2, mse, missing, X.shape[0], X.shape[1]
-  
+    return y.values, ypred, r2, mse, missing, X.shape[0], X.shape[1], best_params
 
 def plot_grid_pars(grid_gbm, gs_param_grid, par1, par2, clfname, target, descriptor):
     y=[]
@@ -157,9 +155,7 @@ def plot_grid_pars(grid_gbm, gs_param_grid, par1, par2, clfname, target, descrip
     p2=gs_param_grid[par2]
     
     for mean_score, params in zip(cvres["mean_test_score"], cvres["params"]):
-        #print(params, mean_score)
         for other_param in other_params:
-            #print(other_param, params[other_param], grid_gbm.best_params_[other_param])
             if params[other_param] != grid_gbm.best_params_[other_param]:
                 mean_score = None
                 break
@@ -257,6 +253,7 @@ def open_file(DATA_PATH, TEST, NSTUD, COLS, TEST_PATH):
     return df
   
 def get_features(df, degree=DEGREE, ref_age='check'):
+  
     #print(df)
     x = df[['age']].values
     
@@ -264,6 +261,7 @@ def get_features(df, degree=DEGREE, ref_age='check'):
         ref_age = MEAN_AGE
     else:
         ref_age = df[['check_age']].values
+        
     mean_age = x.mean()
     gender = df['gender'].values[0]
     lx = len(x)
@@ -291,11 +289,16 @@ def get_features(df, degree=DEGREE, ref_age='check'):
         sd_2 = np.nan
     
     age_diff = np.max(x) - np.min(x) 
-    if age_diff < MAX_AGE_DIFF or lx < MIN_POINTS or np.isnan(mean_age) or np.isnan(mean_y):
+    if age_diff < MAX_AGE_DIFF or lx < MIN_POINTS or np.isnan(mean_age) or np.isnan(mean_y) or np.isnan(ref_age).any():
         res = [mean_age, gender, age_diff, lx, mean_y, sd_y, last_y, mean_1, sd_1, mean_2, sd_2] + (degree + 1)*[np.nan] #studentId, scale, 
     else: 
         poly = PolynomialFeatures(degree=degree)
-        polyx = poly.fit_transform(x - ref_age)
+        try:
+            polyx = poly.fit_transform(x - ref_age)
+        except: 
+            print(x)  
+            print(ref_age)
+            stophere
         reg = LinearRegression(fit_intercept=False)
         reg.fit(polyx, y)
         res = [mean_age, gender, age_diff, lx, mean_y, sd_y, last_y, mean_1, sd_1, mean_2, sd_2] + reg.coef_.ravel().tolist() 

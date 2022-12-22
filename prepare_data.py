@@ -91,7 +91,6 @@ def prepare_data(check_type):
     TEST_INT_PATH = './data/aux/aux_data_%d_%s.csv'%(NSTUDS, check_type)
 
     # checks data
-
     df_checks = open_file(CHECKS_PATH, TEST, NSTUDS, CHECKS_COLS, CHECKS_TEST_PATH)
     print(df_checks.columns)
     print(df_checks)
@@ -116,9 +115,12 @@ def prepare_data(check_type):
     print(df_checks.columns)
 
     # keep only if date earlier than checks tests
-    df = df_ms.merge(df_checks[['studentId','check_timestamp']], on='studentId').reset_index(drop=True)
+    df = df_ms.merge(df_checks[['studentId','check_timestamp']], on='studentId', ## added how = left
+    how='left').reset_index(drop=True)
     data_descriptor(df, 'df_pre', check_type)
-    df = df.loc[df.timestamp < df.check_timestamp]
+    
+    #df = df.loc[df.timestamp < df.check_timestamp]
+    df['before_exam'] = df.timestamp < df.check_timestamp
     data_descriptor(df, 'df_post', check_type)
     df['check_age'] = (pd.to_datetime(df['check_timestamp']) - pd.to_datetime(df['btimestamp']))/timedelta(days=365.2425)
     df.to_csv(TEST_INT_PATH, index=False)
