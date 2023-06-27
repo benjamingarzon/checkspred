@@ -23,6 +23,7 @@ MIN_POINTS = 3
 MIN_POINTS_POLY = 10
 AGE_DIFF = 0.5
 
+
 #features_global1 = ['mean_1', 'sd_1']
 #features_global2 = ['mean_2', 'sd_2']
 #features_scale1 = [f"('{m}', '{f}')" for f in ['dles','dsif','ehoe','eles','mfur','mgfd','mzuv'] for m in ['mean_1']]
@@ -39,6 +40,16 @@ features_sd = ['sd']
 features_poly = ['degree_0', 'degree_1'] 
 
 features_demo = ['gender', 'mother_tongue']
+
+features_demo = [
+  'gender', 
+  'mother_tongue',
+  'frequency', 
+  'previous_sessions', 
+  'years_from_start'
+  ]
+  
+  
 features_age = ['age']
 features_check = [ 'wle_%s_last'%s for s in SCALES ]
 
@@ -65,9 +76,10 @@ features_dict = {
 
 ALGOS = {
   'test': ['ridge'],
-  'main': ['ridge'],
+  'main': ['ols', 'enet', 'ridge'],
   'xgb': ['xgb'],
-  'checks': ['ridge'],
+  'main_P5': ['ols', 'enet', 'ridge'],
+  'checks': ['ols', 'enet', 'ridge'],
   'adaptive': ['ridge'],
   'nonadaptive': ['ridge']
    }
@@ -76,6 +88,7 @@ DESCRIPTORS = {
   'test': ['gMI_7'],
   'main': ['gl_1', 'gL_2', 'gm_3', 'gM_4', 'gMs_5', 'gMp_6', 'gMI_7', 'gMc_8', 'gc_9'],
   'xgb': ['gM_4'],
+  'main_P5': ['gl_1', 'gL_2', 'gm_3', 'gM_4', 'gMI_7', 'gMc_8', 'gc_9'],
   'checks': ['gMc_8', 'gc_9'],
   'adaptive': ['gM_4'],
   'nonadaptive': ['gM_4']
@@ -85,12 +98,21 @@ USE_CASES = {
   'test': ['nonadaptive'],
   'main': ['all'],
   'xgb': ['all'],
+  'main_P5': ['all'],
   'checks': ['all'],
   'adaptive': ['adaptive'],
   'nonadaptive': ['nonadaptive']
     }
 
-CHECK_TYPES = ['S2', 'P5', 'S3']
+CHECK_TYPES = {
+  'test': ['S3'],
+  'main': ['S2', 'S3'],
+  'xgb': ['S2', 'P5', 'S3'],
+  'main_P5': ['P5'],
+  'checks': ['S2', 'P5', 'S3'],
+  'adaptive': ['S2', 'P5', 'S3'],
+  'nonadaptive': ['S2', 'P5', 'S3']
+}
 
 EQUALIZE = False
 
@@ -101,7 +123,8 @@ if len(sys.argv) > 1:
 if len(sys.argv) > 2 and sys.argv[2] == 'test':
     SCENARIOS = ['test' ]
 else:
-    SCENARIOS = ['main', 'checks', 'nonadaptive', 'adaptive', 'xgb']
+    SCENARIOS = ['main', 'checks', 'main_P5', 'xgb']
+    #SCENARIOS = ['main', 'checks', 'nonadaptive', 'adaptive', 'xgb']
 
 def prettify_feature(feature):
     x = ''
@@ -123,7 +146,8 @@ def get_features(descriptor):
     return(features)
 
 
-def fit_model(check_type, model_type, descriptor, descriptors, use_case, equalize=False):
+def fit_model(check_type, model_type, descriptor, descriptors, use_case, 
+    equalize=False, nmax=None):
     descriptor_all = list(set(''.join(descriptors)))
     
     if equalize:
@@ -133,6 +157,7 @@ def fit_model(check_type, model_type, descriptor, descriptors, use_case, equaliz
     print(out_path)
 
     DATA_PATH = './data/merged_data_%s.csv'%(check_type)
+    X_PATH = '%s/X_data_%s_%s_%s_%s.csv'%(out_path, check_type, model_type, descriptor, use_case)
     Y_PATH = '%s/y_data_%s_%s_%s_%s.csv'%(out_path, check_type, model_type, descriptor, use_case)
     SCORES_PATH = '%s/scores_data_%s_%s_%s_%s.csv'%(out_path, check_type, model_type, descriptor, use_case)
     N_DATA_PATH = '%s/n_data_%s_%s_%s_%s.csv'%(out_path, check_type, model_type, descriptor, use_case)
@@ -228,6 +253,8 @@ def fit_model(check_type, model_type, descriptor, descriptors, use_case, equaliz
     if equalize:
         #print(df.missing_target.value_counts(normalize=False))
         df = df.loc[df['missing_target'] == 0]
+        if nmax is not None and nmax < df.shape[0]:
+            df = df.sample(nmax)  
         
     # add interactions
     if 'I' in descriptor:
@@ -245,6 +272,8 @@ def fit_model(check_type, model_type, descriptor, descriptors, use_case, equaliz
 
     print(df.shape)
         
+    folds_all = []
+    X_all = []
     y_all = []
     ypred_all = []
     y_target = [] 
@@ -260,11 +289,12 @@ def fit_model(check_type, model_type, descriptor, descriptors, use_case, equaliz
     for target in WLES:
         print(target)
         if model_type == 'xgb':
-            y, ypred, r2, mse, missing, nsub, nfeat, best_params, importances = fit_XGB_model(df, features, target, descriptor, shuffle=False)
+            folds, X, y, ypred, r2, mse, missing, nsub, nfeat, best_params, importances = fit_XGB_model(df, features, target, descriptor, shuffle=False)
         else:
-            y, ypred, r2, mse, missing, nsub, nfeat, best_params, importances = fit_regression_model(df, features, target, model_type, shuffle=False)
+            folds, X, y, ypred, r2, mse, missing, nsub, nfeat, best_params, importances = fit_regression_model(df, features, target, model_type, shuffle=False)
             #y, ypred, scores, missing = fit_XGB_model(df, features, target)
 
+        X_all.append(X)
         y_all.append(y)
         ypred_all.append(ypred)
         r2_all.append(r2)
@@ -279,11 +309,15 @@ def fit_model(check_type, model_type, descriptor, descriptors, use_case, equaliz
         columns = [ prettify_feature(x) for x in features ])
         importances['target'] = target
         importances_all.append(importances)
+        folds_all.append(folds)
+
+    X_data = pd.DataFrame(np.concatenate(X_all, axis=0), columns=features)
     
     y_data = pd.DataFrame({'check_type': check_type,
                            'target': y_target, 
                            'y': np.concatenate(y_all), 
                            'ypred': np.concatenate(ypred_all), 
+                           'fold': np.concatenate(folds_all), 
                            'missing': np.concatenate(missing_all, dtype = int)})
                        
     scores_data = pd.DataFrame({'check_type': check_type,
@@ -300,6 +334,7 @@ def fit_model(check_type, model_type, descriptor, descriptors, use_case, equaliz
     for k in best_params_all[0]})
     importances = pd.concat(importances_all)
 
+    X_data.to_csv(X_PATH, index=False)
     y_data.to_csv(Y_PATH, index=False)
     scores_data.to_csv(SCORES_PATH, index=False)
     n_data.to_csv(N_DATA_PATH, index=False)
@@ -307,27 +342,33 @@ def fit_model(check_type, model_type, descriptor, descriptors, use_case, equaliz
     #importances['target'] = WLES
     importances.to_csv(IMPORTANCES_PATH, index=False)
     
+    return X_data.shape
+    
 for scenario in SCENARIOS: 
     descriptors = DESCRIPTORS[scenario]
     use_cases = USE_CASES[scenario]
     algos = ALGOS[scenario]   
-
-    for check_type in CHECK_TYPES:
+    check_types = CHECK_TYPES[scenario]
     
-        for algo in algos:
+    for check_type in check_types:
+        nmax = None
+        for descriptor in descriptors:
             for use_case in use_cases:
-                for descriptor in descriptors:
+                for algo in algos:
                     print(100*"-")
                     print(scenario, check_type, algo, use_case,  descriptor)
                     print(100*"-")
-                    if False:
-                        fit_model(check_type, algo, descriptor, descriptors, 
-                        use_case, equalize=EQUALIZE)
+                    if True:
+                        X_shape = fit_model(check_type, algo, descriptor, descriptors, 
+                        use_case, equalize=EQUALIZE, nmax=nmax)
                         continue
                     try:
-                        fit_model(check_type, algo, descriptor, 
-                        descriptors, use_case, equalize=EQUALIZE)
+                        X_shape = fit_model(check_type, algo, descriptor, 
+                        descriptors, use_case, equalize=EQUALIZE, nmax=nmax)
                         
+                        if nmax is None:
+                            nmax = X_shape[0]
+
                     except Exception as e: 
                         print(f"An exception occurred for {check_type}")
                         print(e)

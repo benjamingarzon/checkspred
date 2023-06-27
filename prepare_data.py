@@ -7,7 +7,8 @@ MAX_AGE, MIN_AGE, MEAN_AGE, get_mode
 
 from joblib import Parallel, delayed
 
-STAGES = ['demo', 'mindsteps', 'checks', 'parallel']
+#STAGES = ['demo', 'mindsteps', 'checks', 'parallel']
+STAGES = ['parallel']
 
 SCALES =  ['dles', 'dsif', 'ehoe', 'eles', 'fhoe', 'fles', 'mzuv', 'mfur', 'mgfd']
 
@@ -26,20 +27,42 @@ MS_COLS = [
 #    'assessmentSessionId',
     'studentId',
     'timestamp',
-    'estimate',
+    'Ability',
     'useCase',
-    'scale'
+    'Scale'
 #    'model'
   ]
   
 DEMO_COLS = [
-#  'assessmentId',
   'studentId',
-  'timestamp_2',
+  'date',
   'age',
   'Gender',
   'motherTongue',
   ]
+
+FINAL_COLS = [
+  'studentId', 
+#  'assessmentId',
+  'scale', 
+  'age', 
+  'gender', 
+  'motherTongue', 
+  'estimate', 
+  'check_age', 
+  'useCase', 
+  'before_exam',
+  'frequency', 
+  'previous_sessions', 
+  'years_from_start'
+  ]
+
+PIVOT_COLS = [
+  'studentId', 
+  'useCase', 
+  'before_exam'
+]
+
 
 NSTUDS = 10000
 
@@ -120,15 +143,15 @@ def prepare_data(check_type):
     data_descriptor(df, 'df_post', check_type)
     df['check_age'] = (pd.to_datetime(df['check_timestamp']) - pd.to_datetime(df['btimestamp']))/timedelta(days=365.2425)
     df.to_csv(TEST_INT_PATH, index=False)
-
-    df_group1 = df[['studentId', 'scale', 'age', 'gender', 'motherTongue', 'estimate', 'check_age', 'useCase', 'before_exam']].groupby(['studentId','scale', 'useCase', 'before_exam']).apply(get_features).reset_index()
-    df_group2 = df[['studentId', 'scale', 'age', 'gender', 'motherTongue', 'estimate', 'check_age', 'useCase', 'before_exam']].groupby(['studentId', 'useCase', 'before_exam']).apply(get_features).reset_index()
+    
+    df_group1 = df[FINAL_COLS].groupby(PIVOT_COLS + ['scale']).apply(get_features).reset_index()
+    df_group2 = df[FINAL_COLS].groupby(PIVOT_COLS).apply(get_features).reset_index()
     print(df_group1)
     print(df_group2)
-    df_group1 = df_group1.pivot(index=['studentId', 'useCase', 'before_exam'], columns='scale', values=res_names[3:]).reset_index()
-    colnames = ['studentId', 'useCase','before_exam'] + df_group1.columns.tolist()[3:] 
+    df_group1 = df_group1.pivot(index=PIVOT_COLS, columns='scale', values=res_names[3:]).reset_index()
+    colnames = PIVOT_COLS + df_group1.columns.tolist()[3:] 
     df_group1 = df_group1.set_axis(colnames, axis=1, inplace=False)
-    df_group = df_group1.merge(df_group2, on=['studentId', 'useCase','before_exam']).reset_index()
+    df_group = df_group1.merge(df_group2, on=PIVOT_COLS).reset_index()
     df_group = df_group.merge(df_checks, on='studentId').reset_index()
     # generate also averaged version
     
@@ -161,13 +184,14 @@ if 'demo' in STAGES:
     # arrange variables
     df_demo = df_demo.loc[df_demo['age'] >= MIN_AGE]
     df_demo = df_demo.loc[df_demo['age'] <= MAX_AGE]
-    df_demo['timestamp'] = df_demo['timestamp_2'].apply(lambda x: pd.to_datetime(datetime.strptime(x, '%d.%m.%Y %H:%M:%S').strftime('%Y-%m-%d %H:%M:%S')))
+    #df_demo['timestamp'] = df_demo['timestamp_2'].apply(lambda x: pd.to_datetime(datetime.strptime(x, '%d.%m.%Y %H:%M:%S').strftime('%Y-%m-%d %H:%M:%S')))
 
     # for ages, take only into account month
     #df_demo['yearmonth'] = df_demo['timestamp'].dt.strftime('%Y-%m')
-
+    df_demo['timestamp'] = df_demo['date']
+    #df_demo['day'] = df_demo['timestamp'].apply(lambda x: datetime.strptime(x, '%Y-%m-%d %H:%M:%S').strftime('%Y-%m-%d'))
     df_demo['day'] = df_demo['timestamp'].dt.strftime('%Y-%m-%d')
-    df_demo = df_demo.drop(columns = ['timestamp_2'])
+    #df_demo = df_demo.drop(columns = ['timestamp_2'])
     df_demo = df_demo.drop_duplicates()
     data_descriptor(df_demo, 'demo', 'all')
     df_demo = df_demo.rename(columns={'age':'age_orig', 'Gender': 'gender'})
@@ -183,6 +207,23 @@ if 'demo' in STAGES:
     df_demo = df_demo.dropna(subset=['age_orig', 'timestamp'])
 
     df_demo['btimestamp'] = df_demo['timestamp'] - df_demo['age_orig'].apply(lambda x: timedelta(days=x*365.2425))
+    
+    print(df_demo.shape)
+    
+    # add features
+    df_aux = df_demo.drop_duplicates(['studentId', 'timestamp']).sort_values(['studentId', 'timestamp'], ascending=True)
+    df_aux['previous_sessions'] = df_aux.set_index(['studentId']).groupby(level=[0]).cumcount().values
+    df_aux['years_from_start'] = df_aux.groupby('studentId', group_keys=False).age_orig.apply(lambda x: x - x.min()).values
+    df_aux['pace'] = df_aux['years_from_start']/(df_aux['previous_sessions'] + 1e-6)
+    df_aux['frequency'] = 1/(df_aux['pace'] + 1e-6)
+    
+    df_demo.set_index(['studentId', 'timestamp'], inplace=True)
+    df_aux.set_index(['studentId', 'timestamp'], inplace=True)
+    df_demo = df_demo.join(df_aux[['frequency', 'previous_sessions', 'years_from_start']], how='left').reset_index()
+
+    print(df_demo.shape)
+    print(df_demo.columns)
+
     df_demo.to_csv(DEMO_CLEAN_PATH, index=False)
     df_demo_ext.to_csv(DEMO_EXT_PATH, index=False)
     print(df_demo)
@@ -196,6 +237,11 @@ if 'mindsteps' in STAGES:
     # abilities data
     df_ms = open_file(MS_PATH, TEST, NSTUDS, MS_COLS, MS_TEST_PATH)
     
+    #['model', 'Ability', 'AbilityLong', 'assessmentSessionId',
+    #   'Scale', 'month.year', 'useCase', 'timestamp', 'age', 'grade', 'gender',
+    #   'motherTongue', 'Nassessments']
+    
+    df_ms = df_ms.rename(columns={'Ability':'estimate', 'Scale':'scale'})
     #df_ms = df_ms.loc[df_ms['model'] == MODEL_TYPE ]
     df_ms['studentId'] = df_ms['studentId'].astype(int)
     #df_ms = df_ms.rename(columns={'timestamp_3': 'timestamp', 'scale2': 'scale'})

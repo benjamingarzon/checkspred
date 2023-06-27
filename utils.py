@@ -23,7 +23,8 @@ MAX_AGE = 18
 MIN_AGE = 6
 N_FOLDS = N_INNER_FOLDS = 10
 
-res_names = ['age', 'gender', 'motherTongue', 'age_diff', 'N', 'mean', 'sd', 
+res_names = ['age', 'gender', 'motherTongue', 'frequency', 
+'previous_sessions', 'years_from_start', 'age_diff', 'N', 'mean', 'sd', 
 'last', 'mean_1', 'sd_1', 'mean_2', 'sd_2'] + ['degree_%d'%i for i in range(DEGREE + 1)]
 
 def fit_regression_model(df, features, target, model_type='ridge', nfolds=N_FOLDS, shuffle=False):
@@ -41,6 +42,8 @@ def fit_regression_model(df, features, target, model_type='ridge', nfolds=N_FOLD
         lm = ElasticNetCV(l1_ratio=[.1, .5, .7, .9, .95, .99, 1], n_alphas = 10, random_state=0) 
     if model_type == 'ridge':
         lm = RidgeCV(alphas=np.logspace(-3, 5, 9))
+    if model_type == 'ols':
+        lm = LinearRegression()
 
     pipeline =  Pipeline([
                 ('imputer', IterativeImputer(max_iter=100, random_state=0)),
@@ -50,28 +53,35 @@ def fit_regression_model(df, features, target, model_type='ridge', nfolds=N_FOLD
     
     outer_cv = KFold(n_splits=nfolds, shuffle=True)
     importances_list = []
+    fold_list = []
+    X_list = []
     y_list = []
     mse_list = []
     r2_list = []
     X = X.to_numpy()
     y = y.to_numpy()
     
-    for train, test in outer_cv.split(X):
+   
+    for i, (train, test) in enumerate(outer_cv.split(X)):
         X_train, X_test, y_train, y_test = X[train], X[test], y[train], y[test]
         pipeline.fit(X_train, y_train)
         ypred = pipeline.predict(X_test)
         r2_list.append(r2_score(y_test, ypred))
         mse_list.append(mean_squared_error(y_test, ypred))
         y_list.append((y_test, ypred))
+        X_list.append(X_test)
         importances_list.append(np.abs(pipeline.named_steps['lm'].coef_))
+        fold = y_test*0 + i
+        fold_list.append(fold.astype(int))
     
     y_test, ypred = zip(*y_list)
     y_test = np.concatenate(y_test)
     ypred = np.concatenate(ypred)
+    X_test = np.concatenate(X_list, axis=0)
     r2 = np.array(r2_list)
     mse = np.array(mse_list)
     importances = np.vstack(importances_list)
-    
+    folds = np.concatenate(fold_list)
     #r21 = cross_val_score(pipeline, X, y, scoring='r2', cv=nfolds)
     #mse1 = -cross_val_score(pipeline, X, y, scoring='neg_mean_squared_error', cv=nfolds)
     #ypred = cross_val_predict(pipeline, X, y, cv=nfolds).ravel()
@@ -79,12 +89,19 @@ def fit_regression_model(df, features, target, model_type='ridge', nfolds=N_FOLD
     mse_mean = mse.mean()
 
     pipeline.fit(X, y)
-    best_params = {'alpha': pipeline.named_steps['lm'].alpha_}
+    
+    if model_type == 'enet':
+        best_params = {'alpha': pipeline.named_steps['lm'].alpha_,
+                       'l1_ratio': pipeline.named_steps['lm'].l1_ratio_}
+    if model_type == 'ridge':
+        best_params = {'alpha': pipeline.named_steps['lm'].alpha_}
+    if model_type == 'ols':
+        best_params = {'none': 0}
     
     #importances = np.abs(pipeline.named_steps['lm'].coef_)
     
     print(f"{model_type}: {r2_mean:.3f}")
-    return y_test, ypred, r2, mse, missing, X.shape[0], X.shape[1], best_params, importances
+    return folds, X_test, y_test, ypred, r2, mse, missing, X.shape[0], X.shape[1], best_params, importances
 
 
 def fit_XGB_model(df, features, target, descriptor, innern = N_INNER_FOLDS, outern = N_FOLDS, shuffle=False, train_only=False):
@@ -142,26 +159,32 @@ def fit_XGB_model(df, features, target, descriptor, innern = N_INNER_FOLDS, oute
     if not train_only: 
       
        importances_list = []
+       fold_list = []
+       X_list = []
        y_list = []
        mse_list = []
        r2_list = []
     
-       for train, test in outer_cv.split(X):
+       for i, (train, test) in enumerate(outer_cv.split(X)):
            X_train, X_test, y_train, y_test = X[train], X[test], y[train], y[test]
            pipeline.fit(X_train, y_train)
            ypred = pipeline.predict(X_test)
            r2_list.append(r2_score(y_test, ypred))
            mse_list.append(mean_squared_error(y_test, ypred))
            y_list.append((y_test, ypred))
-
+           X_list.append(X_test)
            importances_list.append(pipeline.best_estimator_.named_steps['xgb'].feature_importances_)
+           fold = y_test*0 + i
+           fold_list.append(fold.astype(int))
 
        y_test, ypred = zip(*y_list)
        y_test = np.concatenate(y_test)
        ypred = np.concatenate(ypred)
+       X_test = np.concatenate(X_list, axis=0)
        r2 = np.array(r2_list)
        mse = np.array(mse_list)
        importances = np.vstack(importances_list)
+       folds = np.concatenate(fold_list)
 
        #r2 = cross_val_score(pipeline, X, y, scoring='r2', cv=outer_cv)
        #mse = -cross_val_score(pipeline, X, y, scoring='neg_mean_squared_error', cv=outer_cv)
@@ -193,7 +216,7 @@ def fit_XGB_model(df, features, target, descriptor, innern = N_INNER_FOLDS, oute
     #plt.legend()
     plt.savefig(f"./figs/importance_{target}_{descriptor}.png")
 
-    return y_test, ypred, r2, mse, missing, X.shape[0], X.shape[1], best_params, importances
+    return folds, X_test, y_test, ypred, r2, mse, missing, X.shape[0], X.shape[1], best_params, importances
 
 def plot_grid_pars(grid_gbm, gs_param_grid, par1, par2, clfname, target, descriptor):
     y=[]
@@ -285,10 +308,14 @@ def fix_ids(x):
     
 
 def open_file(DATA_PATH, TEST, NSTUD, COLS, TEST_PATH):
+  
     print(f"Opening {DATA_PATH}")
     if not TEST:
         rds = pyreadr.read_r(DATA_PATH)
-        df = rds[None] 
+        if 'abilities' in rds.keys():
+            df = rds['abilities'] 
+        else:          
+            df = rds[None] 
         sIds = pd.unique(df.studentId)
         #print(len(sIds))
         sIds = np.random.choice(sIds, size=NSTUD, replace=False)
@@ -316,6 +343,9 @@ def get_features(df, degree=DEGREE, ref_age='check'):
     mean_age = x.mean()
     gender = df['gender'].values[0]
     motherTongue = df['motherTongue'].values[0]
+    frequency = df['frequency'].values[0]
+    previous_sessions = df['previous_sessions'].values[0]
+    years_from_start = df['years_from_start'].values[0]
     lx = len(x)
     y = df[['estimate']].values
     mean_y = y.mean()
@@ -348,7 +378,9 @@ def get_features(df, degree=DEGREE, ref_age='check'):
     
     age_diff = np.max(x) - np.min(x) 
     if age_diff < MAX_AGE_DIFF or lx < MIN_POINTS or np.isnan(mean_age) or np.isnan(mean_y) or np.isnan(ref_age).any():
-        res = [mean_age, gender, motherTongue, age_diff, lx, mean_y, sd_y, last_y, mean_1, sd_1, mean_2, sd_2] + (degree + 1)*[np.nan] #studentId, scale, 
+        res = [mean_age, gender, motherTongue, frequency, 
+        previous_sessions, years_from_start, age_diff, lx, 
+        mean_y, sd_y, last_y, mean_1, sd_1, mean_2, sd_2] + (degree + 1)*[np.nan] #studentId, scale, 
     else: 
         poly = PolynomialFeatures(degree=degree)
         try:
@@ -359,7 +391,9 @@ def get_features(df, degree=DEGREE, ref_age='check'):
             exit()
         reg = LinearRegression(fit_intercept=False)
         reg.fit(polyx, y)
-        res = [mean_age, gender, motherTongue, age_diff, lx, mean_y, sd_y, last_y, mean_1, sd_1, mean_2, sd_2] + reg.coef_.ravel().tolist() 
+        res = [mean_age, gender, motherTongue, frequency, 
+        previous_sessions, years_from_start, age_diff, lx, 
+        mean_y, sd_y, last_y, mean_1, sd_1, mean_2, sd_2] + reg.coef_.ravel().tolist() 
         
     return pd.Series(dict(zip(res_names, res)))
 
