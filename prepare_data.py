@@ -7,8 +7,8 @@ MAX_AGE, MIN_AGE, MEAN_AGE, get_mode
 
 from joblib import Parallel, delayed
 
-#STAGES = ['demo', 'mindsteps', 'checks', 'parallel']
-STAGES = ['parallel']
+STAGES = ['demo', 'mindsteps', 'checks', 'parallel']
+#STAGES = ['parallel']
 
 SCALES =  ['dles', 'dsif', 'ehoe', 'eles', 'fhoe', 'fles', 'mzuv', 'mfur', 'mgfd']
 
@@ -39,6 +39,9 @@ DEMO_COLS = [
   'age',
   'Gender',
   'motherTongue',
+  'frequency', 
+  'previous_sessions', 
+  'years_from_start'
   ]
 
 FINAL_COLS = [
@@ -200,7 +203,10 @@ if 'demo' in STAGES:
     print(df_demo)
     
     df_demo_ext = df_demo.groupby(['studentId', 'day']).agg({ 
-      'age_orig': 'mean'}).reset_index().rename(columns={'age_orig':'age_ext'})
+      'age_orig': np.nanmean, 
+      'frequency' : np.nanmean, 
+      'years_from_start' : np.nanmean, 
+      'previous_sessions' : np.nanmean }).reset_index().rename(columns={'age_orig':'age_ext'})
 
     df_demo = df_demo.groupby(['studentId']).agg({ 
       'age_orig': 'first', 'timestamp': 'first', 'gender': get_mode, 'motherTongue': get_mode}).reset_index() 
@@ -208,18 +214,18 @@ if 'demo' in STAGES:
 
     df_demo['btimestamp'] = df_demo['timestamp'] - df_demo['age_orig'].apply(lambda x: timedelta(days=x*365.2425))
     
-    print(df_demo.shape)
+    #print(df_demo.shape)
     
     # add features
-    df_aux = df_demo.drop_duplicates(['studentId', 'timestamp']).sort_values(['studentId', 'timestamp'], ascending=True)
-    df_aux['previous_sessions'] = df_aux.set_index(['studentId']).groupby(level=[0]).cumcount().values
-    df_aux['years_from_start'] = df_aux.groupby('studentId', group_keys=False).age_orig.apply(lambda x: x - x.min()).values
-    df_aux['pace'] = df_aux['years_from_start']/(df_aux['previous_sessions'] + 1e-6)
-    df_aux['frequency'] = 1/(df_aux['pace'] + 1e-6)
+    #df_aux = df_demo.drop_duplicates(['studentId', 'timestamp']).sort_values(['studentId', 'timestamp'], ascending=True)
+    #df_aux['previous_sessions'] = df_aux.set_index(['studentId']).groupby(level=[0]).cumcount().values
+    #df_aux['years_from_start'] = df_aux.groupby('studentId', group_keys=False).age_orig.apply(lambda x: x - x.min()).values
+    #df_aux['pace'] = df_aux['years_from_start']/(df_aux['previous_sessions'] + 1e-6)
+    #df_aux['frequency'] = 1/(df_aux['pace'] + 1e-6)
     
-    df_demo.set_index(['studentId', 'timestamp'], inplace=True)
-    df_aux.set_index(['studentId', 'timestamp'], inplace=True)
-    df_demo = df_demo.join(df_aux[['frequency', 'previous_sessions', 'years_from_start']], how='left').reset_index()
+    #df_demo.set_index(['studentId', 'timestamp'], inplace=True)
+    #df_aux.set_index(['studentId', 'timestamp'], inplace=True)
+    #df_demo = df_demo.join(df_aux[['frequency', 'previous_sessions', 'years_from_start']], how='left').reset_index()
 
     print(df_demo.shape)
     print(df_demo.columns)
@@ -255,7 +261,8 @@ if 'mindsteps' in STAGES:
     print("Mindsteps data")
     print(df_ms)
     df_ms = df_demo.drop(columns='timestamp').merge(df_ms, on=['studentId'], how='right').reset_index() 
-    df_ms = df_demo_ext[['studentId', 'day', 'age_ext']].merge(df_ms, on = ['studentId', 'day'], how='right').reset_index(drop=True)
+    df_ms = df_demo_ext[['studentId', 'day', 'age_ext', 
+    'frequency', 'previous_sessions', 'years_from_start']].merge(df_ms, on = ['studentId', 'day'], how='right').reset_index(drop=True)
     df_ms['age'] = (pd.to_datetime(df_ms['timestamp']) - pd.to_datetime(df_ms['btimestamp']))/timedelta(days=365.2425)
     df_ms.loc[df_ms['age_ext'].notnull(), 'age'] = df_ms['age_ext'][df_ms['age_ext'].notnull()]
 
@@ -295,7 +302,3 @@ if 'parallel' not in STAGES:
     do_prepare(check_type, df_ms)
 else:
   Parallel(n_jobs=len(CHECK_TYPES))(delayed(do_prepare)(check_type, df_ms) for check_type in CHECK_TYPES)
-
-
-  
-  

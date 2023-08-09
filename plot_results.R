@@ -14,18 +14,22 @@ library(reshape2)
 
 args = commandArgs(trailingOnly=TRUE)
 if (length(args) == 0 | args[1] == 'notequal') {
+  EQUALIZED = F
   OUT_PATH = "./out/not_equalized/"
   
 } else {
+  EQUALIZED = T
   OUT_PATH = "./out/equalized/" 
 }
 
-OUT_PATH = "./out/equalized/" 
 selected_scales = c('dles', 'ehoe', 'mfur', 'mgfd')
 
 domain = c(
   'gender'='Demographics',
-  'motherTongue'='Demographics',
+  'mother_tongue'='Demographics',
+  'years_from_start'='Use',
+  'previous_sessions'='Use',
+  'frequency'='Use',
   'mean_dles'='German',
   'mean_dsif'='German',
   'mean_ehoe'='English',
@@ -50,17 +54,22 @@ WIDTH = 7.2
 HEIGHT = 6.8
 DPI = 1000
 LABEL_SIZE = 28
-SCATTER_SAMPLE = 4000
+SCATTER_SAMPLE = 2000
 CUTS = c(-7, -5, -3, -1, 1, 3, 5, 7)
 CUT_LABELS = c(-6, -4, -2, 0, 2, 4, 6)
+
+CUTS = seq(-6.5, 6.5) 
+CUT_LABELS = seq(-6, 6) 
 
 setwd("~/checkspred")
 
 IMPORTANCE_RESULTS = 'importances_S2_xgb_gM_4_all.csv' 
+#IMPORTANCE_RESULTS = 'importances_S2_ridge_gM_4_all.csv' 
 MODEL_RESULTS.1 = 'y_data_S2_ols_gM_4_all.csv'  # select model of interest to plot predictions and missingness
 MODEL_RESULTS.2 = 'y_data_S2_ols_gc_9_all.csv'  # select model of interest to plot predictions and missingness
 MODEL_X.1 = 'X_data_S2_ols_gM_4_all.csv'
 MODEL_X.2 = 'X_data_S2_ols_gc_9_all.csv'
+
 
 read_file = function(myfile){
   data = read.csv(file.path(OUT_PATH, myfile))
@@ -97,7 +106,7 @@ descriptors.1.ridge = c("gl", "gL", "gm", "gM", "gMs", "gMp", "gMI")
 descriptors.1.xgb = c("gM")
 descriptors.1.enet = descriptors.1.ols = descriptors.1.xgb
 descriptors.2 = c("gc", "gMc")
-grade_labels = c('S2' = 'Grade 8', 'S3' = 'Grade 9', 'P3' = 'Grade 3', 'P5' = 'Grade 5')
+grade_labels = c('S2' = 'Gr. 8', 'S3' = 'Gr. 9', 'P3' = 'Gr. 3', 'P5' = 'Gr. 5')
 
 ################################################################################
 # plot scores
@@ -116,14 +125,17 @@ scores.mean = scores_data %>% group_by(target, check_type, model_type, descripto
   summarise(r2.mean = mean(r2, na.rm=T), r2.sd = sd(r2, na.rm=T),
     mse.mean = mean(mse, na.rm=T), mse.sd = sd(mse, na.rm=T)) %>% mutate(grade = grade_labels[check_type]) 
 
-
 scores.mean.1 = scores.mean %>% filter(
-    (model_type == "ols" & descriptor %in% descriptors.1.ols)|
-    (model_type == "enet" & descriptor %in% descriptors.1.enet)|
+#    (model_type == "ols" & descriptor %in% descriptors.1.ols)|
+#    (model_type == "enet" & descriptor %in% descriptors.1.enet)|
     (model_type == "ridge" & descriptor %in% descriptors.1.ridge)|
     (model_type == "xgb" & descriptor %in% descriptors.1.xgb)) #check_type != "P5",
 
 scores.mean.2 = scores.mean %>% filter(model_type == "ridge", descriptor %in% descriptors.2) #check_type != "P5",
+scores.ranges = scores.mean %>% group_by(grade, check_type, model_type, descriptor) %>% 
+  summarize(var.min = round(min(r2.mean)*100), var.max = round(max(r2.mean)*100))
+
+print(scores.ranges %>% filter(descriptor %in% c('gM', 'gc') , model_type %in% c('ridge', 'xgb') )%>% arrange(descriptor, model_type, check_type))
 
 MAX_R2 = max(c(scores.mean.1$r2.mean, scores.mean.2$r2.mean))*1.1
 MAX_R2.1 = max(scores.mean.1$r2.mean)*1.1
@@ -172,9 +184,10 @@ ggsave(file.path(OUT_PATH, "./figs/r2scores_checks.png"), plot = myplot.r2score.
 
 n_data = bind_rows(lapply(n_files, read_file), .id = 'index')
 n_data$nsub = log(n_data$nsub, 10)
+n_data = n_data %>% mutate(grade = grade_labels[check_type])
 n_data.1 = n_data %>% filter(
-  (model_type == "ols" & descriptor %in% descriptors.1.ols)|
-  (model_type == "enet" & descriptor %in% descriptors.1.enet)|
+#  (model_type == "ols" & descriptor %in% descriptors.1.ols)|
+#  (model_type == "enet" & descriptor %in% descriptors.1.enet)|
   (model_type == "ridge" & descriptor %in% descriptors.1.ridge)|
   (model_type == "xgb" & descriptor %in% descriptors.1.xgb))
 
@@ -190,7 +203,7 @@ myplot.n.1 = ggplot(n_data.1, aes(x = factor(descriptor, levels = descriptors.1.
   ylab(expression(paste(log[10], "(sample size)"))) +
   xlab('Model') +
   ylim(0, MAX_N.1) + 
-  facet_grid( check_type ~  model_type, scales="free_x", space = "free_x") +
+  facet_grid( grade ~  model_type, scales="free_x", space = "free_x") +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), legend.position="none", legend.title=element_blank())
 print(myplot.n.1)
 ggsave(file.path(OUT_PATH, "./figs/n.png"), plot = myplot.n.1, dpi = DPI, width = WIDTH, height = HEIGHT)
@@ -200,11 +213,12 @@ myplot.n.2 = ggplot(n_data.2, aes(x = factor(descriptor, levels = descriptors.2)
   ylab(expression(paste(log[10], "(sample size)"))) +
   xlab('Model') +
   ylim(0, MAX_N.2) + 
-  facet_grid( check_type ~  model_type, scales="free_x", space = "free_x") +
+  facet_grid( grade ~  model_type, scales="free_x", space = "free_x") +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), legend.position="none", legend.title=element_blank())
 print(myplot.n.2)
 ggsave(file.path(OUT_PATH, "./figs/n_checks.png"), plot = myplot.n.2, dpi = DPI, width = WIDTH, height = HEIGHT)
 
+if (!EQUALIZED){
 ################################################################################
 # plot correlations between true and predicted and distribution for missing
 ################################################################################
@@ -240,7 +254,7 @@ myplot.y.1 = ggplot(y_data.scales, aes(x = y, y = ypred)) +
   theme(legend.position='none', panel.grid = element_blank())
 print(myplot.y.1)
 
-myplot.level.1 = ggplot(y_data.scales, aes(x = y, y=ypred-y)) + 
+myplot.level.1 = ggplot(y_data.scales, aes(x=y, y=ypred-y)) + 
   geom_point(data = y_sample, size = 0.01, col = "black") + 
   geom_density_2d_filled(alpha = 0.8, bins=50) +
   geom_abline(intercept = 0, slope = 0, linetype = "dashed", linewidth = 0.5) +
@@ -254,6 +268,7 @@ myplot.level.1 = ggplot(y_data.scales, aes(x = y, y=ypred-y)) +
   theme(legend.position='none', panel.grid = element_blank())
 print(myplot.level.1)
 
+# gender
 rsquared_data.gender = y_data %>% group_by(gender_label, target, check_type, fold) %>% 
   summarise(r2 = rsquared(y, ypred))
 
@@ -271,7 +286,13 @@ myplot.gender.1 = ggplot(rsquared.gender.mean, aes(x=target, fill=gender_label,
   theme(legend.position='none', panel.grid = element_blank())
 print(myplot.gender.1)
 
+# mother tongue
+n.mother_tongue = y_data %>% filter(y.cut %in% seq(-2, 2)) %>% group_by(mother_tongue_label, target, check_type, fold) %>% 
+  summarise(n_obs = n()) 
+MIN_OBS = min(n.mother_tongue$n_obs)
+
 rsquared_data.mother_tongue = y_data %>% group_by(mother_tongue_label, target, check_type, fold) %>% 
+  #sample_n(MIN_OBS) %>% 
   summarise(r2 = rsquared(y, ypred))
 
 rsquared.mother_tongue.mean = rsquared_data.mother_tongue %>% group_by(mother_tongue_label, target, check_type) %>% 
@@ -287,6 +308,63 @@ myplot.mother_tongue.1 = ggplot(rsquared.mother_tongue.mean, aes(x=target, fill=
   xlab('Competence Domain') +
   theme(legend.position='none', panel.grid = element_blank())
 print(myplot.mother_tongue.1)
+
+# gender and ability
+rsquared_data.gender = y_data %>% group_by(gender_label, target, check_type, fold, y.cut) %>% 
+  summarise(r2 = rsquared(y, ypred))
+
+rsquared.gender.mean = rsquared_data.gender %>% group_by(gender_label, target, check_type, y.cut) %>% 
+  summarise(r2.mean = mean(r2, na.rm=T), r2.sd = sd(r2, na.rm=T)) %>% mutate(grade = grade_labels[check_type]) 
+
+myplot.gender.abil.1 = ggplot(rsquared.gender.mean %>% filter(y.cut %in% seq(-2, 2)), 
+  aes(x=target, fill=gender_label, 
+  y = r2.mean, ymax = r2.mean + r2.sd, 
+  ymin = r2.mean - r2.sd)) + 
+  geom_col(position=position_dodge()) + 
+  geom_errorbar(position=position_dodge()) +
+  scale_fill_manual(values=myPalette) + 
+  ylab(expression(R^2)) +
+  xlab('Competence Domain') +
+  facet_grid(. ~ y.cut ) + 
+  theme(legend.position='none', panel.grid = element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+print(myplot.gender.abil.1)
+
+# mother tongue and ability
+n.mother_tongue = y_data %>% filter(y.cut %in% seq(-2, 2)) %>% group_by(mother_tongue_label, target, check_type, fold, y.cut) %>% 
+  summarise(n_obs = n()) 
+MIN_OBS = min(n.mother_tongue$n_obs)
+
+rsquared_data.mother_tongue = y_data %>% filter(y.cut %in% seq(-2, 2)) %>% group_by(mother_tongue_label, target, check_type, fold, y.cut) %>% 
+  sample_n (MIN_OBS)%>% summarise(r2 = rsquared(y, ypred))
+
+rsquared.mother_tongue.mean = rsquared_data.mother_tongue %>% group_by(mother_tongue_label, target, check_type, y.cut) %>% 
+  summarise(r2.mean = mean(r2, na.rm=T), r2.sd = sd(r2, na.rm=T)) %>% mutate(grade = grade_labels[check_type]) 
+
+myplot.mother_tongue.abil.1 = ggplot(rsquared.mother_tongue.mean %>% filter(y.cut %in% seq(-2, 2)), 
+  aes(x=target, fill=mother_tongue_label, 
+    y = r2.mean, ymax = r2.mean + r2.sd, 
+    ymin = r2.mean - r2.sd)) + 
+  geom_col(position=position_dodge()) + 
+  geom_errorbar(position=position_dodge()) +
+  scale_fill_manual(values=myPalette) + 
+  ylab(expression(R^2)) +
+  xlab('Competence Domain') +
+  facet_grid(. ~ y.cut ) + 
+  theme(legend.position='none', panel.grid = element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+print(myplot.mother_tongue.abil.1)
+
+myplot.mother_tongue.abil.1 = ggplot(rsquared.mother_tongue.mean %>% filter(y.cut %in% seq(-2, 2)), 
+  aes(x=y.cut, fill=mother_tongue_label, 
+    y = r2.mean, ymax = r2.mean + r2.sd, 
+    ymin = r2.mean - r2.sd)) + 
+  geom_col(position=position_dodge()) + 
+  geom_errorbar(position=position_dodge()) +
+  scale_fill_manual(values=myPalette) + 
+  ylab(expression(R^2)) +
+  xlab('Competence Domain') +
+  facet_grid(. ~ target ) + 
+  theme(legend.position='none', panel.grid = element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+print(myplot.mother_tongue.abil.1)
 
 # myplot.gender.1 = ggplot(y_data, aes(x=gender_label, fill=gender_label, y=ypred-y)) + 
 #   #geom_point(data = y_data %>% sample_n(SCATTER_SAMPLE), size = 0.01, col = "black") + 
@@ -327,7 +405,7 @@ y_sample = y_data.scales %>% group_by(target, fold) %>% sample_n(SCATTER_SAMPLE%
 myplot.y.2 = ggplot(y_data.scales, aes(x = y, y = ypred)) + 
   geom_point(data = y_sample, size = 0.01, col ="black") + 
   geom_density_2d_filled(alpha = 0.8, bins=50) +
-  geom_abline(intercept = 0, slope = 1, linetype = "dashed", size = 0.5) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", linewidth = 0.5) +
   scale_x_continuous(expand = c(0, 0)) +
   scale_y_continuous(expand = c(0, 0)) +
   facet_wrap(. ~ target) + 
@@ -351,7 +429,6 @@ myplot.level.2 = ggplot(y_data.scales, aes(x = y, y=ypred-y)) +
   xlab('True Ability') +
   theme(legend.position='none', panel.grid = element_blank())
 print(myplot.level.2)
-
 
 rsquared_data.gender = y_data %>% group_by(gender_label, target, check_type, fold) %>% 
   summarise(r2 = rsquared(y, ypred))
@@ -409,20 +486,7 @@ ggsave(file.path(OUT_PATH, "./figs/missing.png"), plot = myplot.miss, dpi = DPI,
 #   ylab('Absolute difference between true and predicted Ability') +
 #   xlab('True Ability') + theme(legend.position = 'none')
 
-myplot.level.2 = ggplot(y_data, aes(x=y, y=ypred-y)) + 
-  geom_point(data = y_data %>% sample_n(SCATTER_SAMPLE), size = 0.01, col = "black") + 
-  geom_density_2d_filled(alpha = 0.8, bins=50) +
-  geom_abline(intercept = 0, slope = 0, linetype = "dashed", linewidth = 0.5) +
-  scale_x_continuous(expand = c(0, 0)) +
-  scale_y_continuous(expand = c(0, 0)) +
-  facet_wrap(. ~ target) + 
-  xlim(-3, 3) + 
-  ylim(-3, 3) + 
-  ylab('Predicted Ability - True Ability') +
-  xlab('True Ability') +
-  theme(legend.position='none', panel.grid = element_blank())
-print(myplot.level.2)
-
+}
 ################################################################################
 # plot feature importances 
 ################################################################################
@@ -434,7 +498,7 @@ importances = melt(importances, id.vars = "target", variable.name = "feature")
 importances.mean = importances %>% group_by(target, feature) %>% 
   summarise(imp.mean = mean(value, na.rm=T), imp.sd = sd(value, na.rm=T))
 
-importances.mean$domain = as.factor(domain[importances.mean$feature])
+importances.mean$domain = as.factor(domain[as.character(importances.mean$feature)])
 levels(importances.mean$feature) = pretty_features(levels(importances.mean$feature))
 #importances.mean$feature = pretty_features(importances.mean$feature)
 
@@ -444,17 +508,17 @@ myplot.importance = ggplot(importances.mean, aes(x = feature,
   ymin = imp.mean - imp.sd, fill = domain)) + 
   geom_col() + 
   geom_errorbar(width=0.2, size=0.5) + 
-  coord_flip() +
-  facet_grid(. ~ target) + 
+  #coord_flip() +
+  facet_grid(target ~ .) + 
   ylab('Feature importance') +
   xlab('Feature') +
-  theme(legend.position="bottom", legend.title=element_blank(), axis.text.x = element_text(size = 10))
+  theme(legend.position="bottom", legend.title=element_blank(), axis.text.x = element_text(size = 20, angle = 90, vjust = 0.5, hjust=1))
 
 print(myplot.importance)
 
 ggsave(file.path(OUT_PATH, "./figs/importance.png"), plot = myplot.importance, dpi = DPI, 
   width=WIDTH*2, 
-  height = HEIGHT*2)
+  height = HEIGHT*2.6)
 
 ################################################################################
 # plot parameters
@@ -486,33 +550,34 @@ myplot.models = ggarrange(
 
 ggsave(file.path(OUT_PATH, "./figs/model_comparison.png"), 
   plot = myplot.models, dpi = DPI, 
-  width = WIDTH*2, height = HEIGHT*2)
+  width = WIDTH*2, height = HEIGHT*2.5)
 
+if (!EQUALIZED){
+  
 myplot.scatter = ggarrange(
   myplot.y.1, myplot.y.2,
   myplot.level.1, myplot.level.2,
   labels = c("A", "B", "C", "D"), ncol = 2, nrow = 2, 
   font.label=list(size=LABEL_SIZE))
 
+
 ggsave(file.path(OUT_PATH, "./figs/true_predicted.png"), 
   plot = myplot.scatter, dpi = DPI, 
   width = WIDTH*2, height = HEIGHT*2)
 
-myplot.scatter = ggarrange(
+myplot.row1 = ggarrange(
   myplot.gender.1, myplot.mother_tongue.1,
   labels = c("A", "B"), ncol = 2, nrow = 1, 
   font.label=list(size=LABEL_SIZE))
 
+myplot.scatter = ggarrange(
+  myplot.row1,
+  myplot.gender.abil.1, myplot.mother_tongue.1,
+  labels = c("", "C", "D"), ncol = 1, nrow = 3, 
+  font.label=list(size=LABEL_SIZE))
+
 ggsave(file.path(OUT_PATH, "./figs/biases.png"), 
   plot = myplot.scatter, dpi = DPI, 
-  width = WIDTH*2, height = HEIGHT)
+  width = WIDTH*2, height = HEIGHT*3)
 
-
-# myplot.level = ggarrange(
-#   myplot.level.1, myplot.level.2,
-#   labels = c("A", "B"), ncol = 2, nrow = 1, 
-#   font.label=list(size=LABEL_SIZE))
-# 
-# ggsave(file.path(OUT_PATH, "./figs/level.png"), 
-#   plot = myplot.level, 
-#   dpi = DPI, width = WIDTH, height = HEIGHT)
+}

@@ -14,7 +14,7 @@ from sklearn.preprocessing import PolynomialFeatures
 from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer
 
-XGBTHREADS = 10
+XGBTHREADS = 15
 DEGREE = 1
 MIN_POINTS = 4
 MAX_AGE_DIFF = 0.25

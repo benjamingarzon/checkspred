@@ -21,7 +21,7 @@ DPI = 1000
 LABEL_SIZE = 28
 LEGEND_TEXT_SIZE = 18
 LEGEND_TITLE_SIZE = 20
-POINT_SIZE = 3
+POINT_SIZE = 5
 LINE_SIZE = 1
 setwd("~/checkspred")
 OUT_PATH = "~/checkspred"
@@ -37,7 +37,7 @@ myplot.size = ggplot(simul.data %>%filter(model=='OLS', nmodels == 1),
   aes(x=nsamples, y=rel_size*100, col=nmodels, shape=noise_label, lty=noise_label, group=group)) + 
   ylab('Relative Dataset Size (%)') + 
   geom_point(size=POINT_SIZE, col='black') + 
-  geom_line(size=LINE_SIZE, col='black') + 
+  geom_line(linewidth=LINE_SIZE, col='black') + 
 #  facet_grid(. ~ model) + 
   xlab('Number of Samples per Bin') + 
   theme(legend.position="none")
@@ -48,7 +48,7 @@ myplot.r2 = ggplot(simul.data,
   aes(x=nsamples, y=r2, col=nmodels, shape=noise_label, lty=noise_label, group=group)) + 
   ylab(expression(R^2)) + 
   geom_point(size=POINT_SIZE) + 
-  geom_line(size=LINE_SIZE) + 
+  geom_line(linewidth=LINE_SIZE) + 
   facet_grid(. ~ model) + 
   xlab('Number of Samples per Bin') + 
   theme(legend.position="none")
@@ -59,7 +59,7 @@ myplot.slope = ggplot(simul.data,
   aes(x=nsamples, y=slope, col=nmodels, shape=noise_label, lty=noise_label, group=group)) + 
   ylab("Regression Slope") + 
   geom_point(size=POINT_SIZE) + 
-  geom_line(size=LINE_SIZE) + 
+  geom_line(linewidth=LINE_SIZE) + 
   facet_grid(. ~ model) + 
   xlab('Number of Samples per Bin') + 
   theme(legend.position="none")
@@ -71,7 +71,7 @@ myplot.compare = ggplot(simul.data,
   ylab(expression(R^2)) + 
   xlab('Regression Slope') + 
   geom_point(size=POINT_SIZE) + 
-  geom_line(size=LINE_SIZE) + 
+  geom_line(linewidth=LINE_SIZE) + 
   facet_grid(. ~ model) + 
   labs(col="Number of Models Averaged", lty="", shape="") + 
   guides(lty=guide_legend(nrow=length(unique(simul.data$noise_label)), byrow=TRUE),
@@ -80,7 +80,8 @@ myplot.compare = ggplot(simul.data,
   theme(legend.position="bottom", 
     legend.title.align = 1,
     legend.title = element_text(size=LEGEND_TITLE_SIZE),    
-    legend.text = element_text(size=LEGEND_TEXT_SIZE)
+    legend.text = element_text(size=LEGEND_TEXT_SIZE),
+    legend.key.width = unit(5, "line")
   )
 
 print(myplot.compare)

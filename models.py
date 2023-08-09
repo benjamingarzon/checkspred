@@ -71,8 +71,6 @@ features_dict = {
 
 }
 
-# define different setups
-#SCENARIOS = ['main', 'xgb', 'checks', 'adaptive', 'nonadaptive' ]
 
 ALGOS = {
   'test': ['ridge'],
@@ -88,11 +86,21 @@ DESCRIPTORS = {
   'test': ['gMI_7'],
   'main': ['gl_1', 'gL_2', 'gm_3', 'gM_4', 'gMs_5', 'gMp_6', 'gMI_7', 'gMc_8', 'gc_9'],
   'xgb': ['gM_4'],
-  'main_P5': ['gl_1', 'gL_2', 'gm_3', 'gM_4', 'gMI_7', 'gMc_8', 'gc_9'],
+  'main_P5': ['gl_1', 'gL_2', 'gm_3', 'gM_4', 'gMs_5', 'gMp_6', 'gMI_7', 'gMc_8', 'gc_9'],
   'checks': ['gMc_8', 'gc_9'],
   'adaptive': ['gM_4'],
   'nonadaptive': ['gM_4']
    }
+   
+DESCRIPTORS_ALL = {
+  'test': ['gMI_7'],
+  'main': list(set(''.join(DESCRIPTORS['main']))),
+  'xgb': list(set(''.join(DESCRIPTORS['main']))),
+  'main_P5': list(set(''.join(['gl_1', 'gL_2', 'gm_3', 'gM_4', 'gMI_7', 'gMc_8', 'gc_9']))),
+  'checks': list(set(''.join(DESCRIPTORS['checks']))),
+  'adaptive': list(set(''.join(DESCRIPTORS['adaptive']))),
+  'nonadaptive': list(set(''.join(DESCRIPTORS['nonadaptive']))),
+   }   
    
 USE_CASES = {
   'test': ['nonadaptive'],
@@ -120,6 +128,9 @@ if len(sys.argv) > 1:
     if sys.argv[1] == 'equal':
         EQUALIZE = True
 
+# define different setups
+#SCENARIOS = ['main', 'xgb', 'checks', 'adaptive', 'nonadaptive' ]
+
 if len(sys.argv) > 2 and sys.argv[2] == 'test':
     SCENARIOS = ['test' ]
 else:
@@ -146,10 +157,9 @@ def get_features(descriptor):
     return(features)
 
 
-def fit_model(check_type, model_type, descriptor, descriptors, use_case, 
-    equalize=False, nmax=None):
-    descriptor_all = list(set(''.join(descriptors)))
-    
+def fit_model(check_type, model_type, descriptor, descriptors, descriptor_all, 
+    use_case, equalize=False, nmax=None):
+
     if equalize:
         out_path = './out/equalized'
     else:
@@ -349,7 +359,7 @@ for scenario in SCENARIOS:
     use_cases = USE_CASES[scenario]
     algos = ALGOS[scenario]   
     check_types = CHECK_TYPES[scenario]
-    
+    descriptor_all = DESCRIPTORS_ALL[scenario]
     for check_type in check_types:
         nmax = None
         for descriptor in descriptors:
@@ -358,13 +368,13 @@ for scenario in SCENARIOS:
                     print(100*"-")
                     print(scenario, check_type, algo, use_case,  descriptor)
                     print(100*"-")
-                    if True:
-                        X_shape = fit_model(check_type, algo, descriptor, descriptors, 
+                    if False:
+                        X_shape = fit_model(check_type, algo, descriptor, descriptors, descriptor_all,
                         use_case, equalize=EQUALIZE, nmax=nmax)
                         continue
                     try:
                         X_shape = fit_model(check_type, algo, descriptor, 
-                        descriptors, use_case, equalize=EQUALIZE, nmax=nmax)
+                        descriptors, descriptor_all, use_case, equalize=EQUALIZE, nmax=nmax)
                         
                         if nmax is None:
                             nmax = X_shape[0]
