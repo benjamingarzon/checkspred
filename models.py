@@ -22,7 +22,7 @@ MAX_MISS_SCALE = 2
 MIN_POINTS = 3
 MIN_POINTS_POLY = 10
 AGE_DIFF = 0.5
-
+OVERWRITE = True
 
 #features_global1 = ['mean_1', 'sd_1']
 #features_global2 = ['mean_2', 'sd_2']
@@ -74,19 +74,19 @@ features_dict = {
 
 ALGOS = {
   'test': ['ridge'],
-  'main': ['ols', 'enet', 'ridge'],
+  'main': ['ridge'], #'ols', 'enet',
   'xgb': ['xgb'],
-  'main_P5': ['ols', 'enet', 'ridge'],
-  'checks': ['ols', 'enet', 'ridge'],
+  'main_P5': ['ridge'], #'ols', 'enet',
+  'checks': [ 'ridge'], #'ols', 'enet',
   'adaptive': ['ridge'],
   'nonadaptive': ['ridge']
    }
 
 DESCRIPTORS = {
   'test': ['gMI_7'],
-  'main': ['gl_1', 'gL_2', 'gm_3', 'gM_4', 'gMs_5', 'gMp_6', 'gMI_7', 'gMc_8', 'gc_9'],
+  'main': ['g_0', 'gl_1', 'gL_2', 'gm_3', 'gM_4', 'gMs_5', 'gMp_6', 'gMI_7'],
   'xgb': ['gM_4'],
-  'main_P5': ['gl_1', 'gL_2', 'gm_3', 'gM_4', 'gMs_5', 'gMp_6', 'gMI_7', 'gMc_8', 'gc_9'],
+  'main_P5': ['g_0', 'gl_1', 'gL_2', 'gm_3', 'gM_4', 'gMs_5', 'gMp_6', 'gMI_7'],
   'checks': ['gMc_8', 'gc_9'],
   'adaptive': ['gM_4'],
   'nonadaptive': ['gM_4']
@@ -96,8 +96,8 @@ DESCRIPTORS_ALL = {
   'test': ['gMI_7'],
   'main': list(set(''.join(DESCRIPTORS['main']))),
   'xgb': list(set(''.join(DESCRIPTORS['main']))),
-  'main_P5': list(set(''.join(['gl_1', 'gL_2', 'gm_3', 'gM_4', 'gMI_7', 'gMc_8', 'gc_9']))),
-  'checks': list(set(''.join(DESCRIPTORS['checks']))),
+  'main_P5': list(set(''.join(['g_0', 'gl_1', 'gm_3']))),
+  'checks': list(set(''.join(DESCRIPTORS['main']))),
   'adaptive': list(set(''.join(DESCRIPTORS['adaptive']))),
   'nonadaptive': list(set(''.join(DESCRIPTORS['nonadaptive']))),
    }   
@@ -115,11 +115,11 @@ USE_CASES = {
 CHECK_TYPES = {
   'test': ['S3'],
   'main': ['S2', 'S3'],
-  'xgb': ['S2', 'P5', 'S3'],
+  'xgb': ['S2', 'S3', 'P5'], 
   'main_P5': ['P5'],
-  'checks': ['S2', 'P5', 'S3'],
-  'adaptive': ['S2', 'P5', 'S3'],
-  'nonadaptive': ['S2', 'P5', 'S3']
+  'checks': ['S2', 'S3', 'P5'],
+  'adaptive': ['S2', 'S3', 'P5'],
+  'nonadaptive': ['S2', 'S3', 'P5']
 }
 
 EQUALIZE = False
@@ -135,8 +135,10 @@ if len(sys.argv) > 2 and sys.argv[2] == 'test':
     SCENARIOS = ['test' ]
 else:
     SCENARIOS = ['main', 'checks', 'main_P5', 'xgb']
+    #SCENARIOS = ['main_P5']
     #SCENARIOS = ['main', 'checks', 'nonadaptive', 'adaptive', 'xgb']
-
+    #SCENARIOS = ['main', 'checks']
+    
 def prettify_feature(feature):
     x = ''
     for l in feature:
@@ -158,7 +160,7 @@ def get_features(descriptor):
 
 
 def fit_model(check_type, model_type, descriptor, descriptors, descriptor_all, 
-    use_case, equalize=False, nmax=None):
+    use_case, equalize=False, nmax=None, overwrite=False):
 
     if equalize:
         out_path = './out/equalized'
@@ -174,17 +176,13 @@ def fit_model(check_type, model_type, descriptor, descriptors, descriptor_all,
     BEST_PARAMS_PATH = '%s/best_params_%s_%s_%s_%s.csv'%(out_path, check_type, model_type, descriptor, use_case)
     IMPORTANCES_PATH = '%s/importances_%s_%s_%s_%s.csv'%(out_path, check_type, model_type, descriptor, use_case)
 
-    df = pd.read_csv(DATA_PATH)
+    if not overwrite and os.path.exists(SCORES_PATH):
+        print('%s already exists'%SCORES_PATH)
+        return
+    
+    df = pd.read_csv(DATA_PATH, low_memory=False)
     print(*df.columns.tolist(), sep=' ')
-    #print("Nas")
-    #print(df.isna().sum())
-    #print("Min")
-    #print(df.min())
-    #print("Max")
-    #print(df.max())
-    #print("Mean")
-    #print(df.mean())
-    #df = df.dropna()
+
     df = df.rename(columns={'motherTongue':'mother_tongue'})
     
     features = get_features(descriptor)
@@ -219,50 +217,63 @@ def fit_model(check_type, model_type, descriptor, descriptors, descriptor_all,
     #print(df.missing_check.value_counts(normalize=False))
 
     # filter data
+    print("Descriptor all:", sorted(descriptor_all))
     print(df.shape)
     print("Missing:", df['missing'].min(), df['missing'].max())
     print(df[features])
     print(df.shape)
 
+    print("before exam", df.shape)
     if 'l' in descriptor or (equalize and 'l' in descriptor_all):
         df = df.loc[df['missing_last'] < len(features_last)]
         df = df.loc[df['before_exam'] == True ]
+        print("l", df.shape)
     if 'm' in descriptor or (equalize and 'm' in descriptor_all):
         df = df.loc[df['missing_mean'] < len(features_mean)]
         df = df.loc[df['before_exam'] == True ]
+        print("m", df.shape)
     if 's' in descriptor or (equalize and 's' in descriptor_all):
         df = df.loc[df['missing_sd'] < len(features_sd)]
         df = df.loc[df['before_exam'] == True ]
-    print(df.shape)
+        print("s", df.shape)
     if 'p' in descriptor or (equalize and 'p' in descriptor_all):
         df = df.loc[df['missing_poly'] == 0]
         df = df.loc[df['N'] >= MIN_POINTS_POLY]
         df = df.loc[df['age_diff'] >= AGE_DIFF]
         df = df.loc[df['before_exam'] == True ]
-    print(df.shape)
+        print("p", df.shape)
     if 'c' in descriptor or (equalize and 'c' in descriptor_all):
         df = df.loc[df['missing_check'] <= MAX_MISS_SCALE]
+        # no need to remove before exam
+        print("c", df.shape)
     #print(df)
     #print(df.shape)
     #print(df['missing_check'].max())
-    #print(df['missing'].max())
-    #stope
-
+    print(df['missing_scale_last'].value_counts()) 
+    print(df['missing_last'].value_counts()) 
     if 'L' in descriptor or (equalize and 'L' in descriptor_all):
         df = df.loc[df['missing_scale_last'] <= MAX_MISS_SCALE]
+        df = df.loc[df['before_exam'] == True ]
+        print("L", df.shape)
     if 'M' in descriptor or (equalize and 'M' in descriptor_all):
         df = df.loc[df['missing_scale_mean'] <= MAX_MISS_SCALE]
+        df = df.loc[df['before_exam'] == True ]
+        print("M", df.shape)
     if 'S' in descriptor or (equalize and 'S' in descriptor_all):
         df = df.loc[df['missing_scale_sd'] <= MAX_MISS_SCALE]
+        df = df.loc[df['before_exam'] == True ]
+        print("S", df.shape)
     if 'P' in descriptor or (equalize and 'P' in descriptor_all):
         df = df.loc[df['missing_scale_poly'] <= MAX_MISS_SCALE*len(features_scale_poly)]
         df = df.loc[df['N'] >= MIN_POINTS_POLY]
         df = df.loc[df['age_diff'] >= AGE_DIFF]
-    print(df.shape)
+        df = df.loc[df['before_exam'] == True ]
+        print("P", df.shape)
 
     if equalize:
         #print(df.missing_target.value_counts(normalize=False))
         df = df.loc[df['missing_target'] == 0]
+        # resample to certain size
         if nmax is not None and nmax < df.shape[0]:
             df = df.sample(nmax)  
         
@@ -279,9 +290,9 @@ def fit_model(check_type, model_type, descriptor, descriptors, descriptor_all,
         interactions = pd.concat(interactions, axis=1)
         features = features + interactions.columns.tolist()
         df = pd.concat((df, interactions), axis=1)
+        print("I", df.shape)
+    print("Final", df.shape)    
 
-    print(df.shape)
-        
     folds_all = []
     X_all = []
     y_all = []
@@ -352,7 +363,7 @@ def fit_model(check_type, model_type, descriptor, descriptors, descriptor_all,
     #importances['target'] = WLES
     importances.to_csv(IMPORTANCES_PATH, index=False)
     
-    return X_data.shape
+    return #X_data.shape
     
 for scenario in SCENARIOS: 
     descriptors = DESCRIPTORS[scenario]
@@ -369,15 +380,15 @@ for scenario in SCENARIOS:
                     print(scenario, check_type, algo, use_case,  descriptor)
                     print(100*"-")
                     if False:
-                        X_shape = fit_model(check_type, algo, descriptor, descriptors, descriptor_all,
-                        use_case, equalize=EQUALIZE, nmax=nmax)
+                        fit_model(check_type, algo, descriptor, descriptors, descriptor_all,
+                        use_case, equalize=EQUALIZE, overwrite=OVERWRITE, nmax=nmax)
                         continue
                     try:
-                        X_shape = fit_model(check_type, algo, descriptor, 
-                        descriptors, descriptor_all, use_case, equalize=EQUALIZE, nmax=nmax)
+                        fit_model(check_type, algo, descriptor, 
+                        descriptors, descriptor_all, use_case, equalize=EQUALIZE, overwrite=OVERWRITE, nmax=nmax)
                         
-                        if nmax is None:
-                            nmax = X_shape[0]
+                        #if nmax is None:
+                        #   nmax = X_shape[0]
 
                     except Exception as e: 
                         print(f"An exception occurred for {check_type}")

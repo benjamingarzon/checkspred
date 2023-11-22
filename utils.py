@@ -64,8 +64,12 @@ def fit_regression_model(df, features, target, model_type='ridge', nfolds=N_FOLD
    
     for i, (train, test) in enumerate(outer_cv.split(X)):
         X_train, X_test, y_train, y_test = X[train], X[test], y[train], y[test]
-        pipeline.fit(X_train, y_train)
-        ypred = pipeline.predict(X_test)
+        
+        try:
+            pipeline.fit(X_train, y_train)
+            ypred = pipeline.predict(X_test)
+        except:
+            ypred = y_test*np.nan
         r2_list.append(r2_score(y_test, ypred))
         mse_list.append(mean_squared_error(y_test, ypred))
         y_list.append((y_test, ypred))
@@ -127,7 +131,6 @@ def fit_XGB_model(df, features, target, descriptor, innern = N_INNER_FOLDS, oute
                 ('scaler', StandardScaler()),
                 ('xgb', xgb),
             ])
-    
     inner_cv = KFold(n_splits=innern, shuffle=True)
     outer_cv = KFold(n_splits=outern, shuffle=True)
 
@@ -167,7 +170,11 @@ def fit_XGB_model(df, features, target, descriptor, innern = N_INNER_FOLDS, oute
     
        for i, (train, test) in enumerate(outer_cv.split(X)):
            X_train, X_test, y_train, y_test = X[train], X[test], y[train], y[test]
-           pipeline.fit(X_train, y_train)
+           try:
+               pipeline.fit(X_train, y_train)
+               ypred = pipeline.predict(X_test)
+           except:
+               ypred = y_test*np.nan
            ypred = pipeline.predict(X_test)
            r2_list.append(r2_score(y_test, ypred))
            mse_list.append(mean_squared_error(y_test, ypred))

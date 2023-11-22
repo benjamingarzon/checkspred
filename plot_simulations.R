@@ -17,7 +17,7 @@ myPalette = c("red", "blue")
 
 WIDTH = 7.2
 HEIGHT = 6.8
-DPI = 1000
+DPI = 800
 LABEL_SIZE = 28
 LEGEND_TEXT_SIZE = 18
 LEGEND_TITLE_SIZE = 20
