@@ -423,6 +423,8 @@ myplot.mother_tongue.abil.1 = ggplot(rsquared.mother_tongue.mean %>% filter(y.cu
   theme(legend.position='none', panel.grid = element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 print(myplot.mother_tongue.abil.1)
 
+if (F){
+
 # check the effect of different factors on error
 
 # covariates = c("gender", "mother_tongue", 
@@ -494,7 +496,6 @@ myplot.error = ggplot(coefs.mean, aes(x=target, y=value.mean, fill=correct,
 print(myplot.error)
 
 # for the non-natives, the model overpredicted their ability, makes a larger error as a group
-if (F){
 # get the fold corresponding to the median effect
 dd = subset(y_data, target == "dles" & fold == 9)
 lmfactors = lm(err ~ 1 + poly(scale(y), degree=2) + mother_tongue, 
@@ -530,7 +531,6 @@ print(table(dd$mother_tongue)/sum(table(dd$mother_tongue)))
 
 
 }
-stophere
 # myplot.gender.1 = ggplot(y_data, aes(x=gender_label, fill=gender_label, y=ypred-y)) + 
 #   #geom_point(data = y_data %>% sample_n(SCATTER_SAMPLE), size = 0.01, col = "black") + 
 #   geom_abline(intercept = 0, slope = 0, linetype = "dashed", linewidth = 0.5) +
@@ -632,7 +632,7 @@ print(myplot.mother_tongue.2)
 myplot.miss = ggplot(y_data, aes(x = as.factor(missing), y = y-ypred, fill = missing)) + 
   geom_violin() + 
   facet_wrap(. ~ target) + 
-  ylab('Predicted Ability - True Ability') +
+  ylab('Predicted Ability - Observed Ability') +
   xlab('Missing') + theme(legend.position = 'none')
 print(myplot.miss)
 ggsave(file.path(OUT_PATH, "./figs/missing.png"), plot = myplot.miss, dpi = DPI, width = WIDTH, height = HEIGHT)
@@ -640,7 +640,7 @@ ggsave(file.path(OUT_PATH, "./figs/missing.png"), plot = myplot.miss, dpi = DPI,
 myplot.miss = ggplot(y_data, aes(x = as.factor(missing), y = abs(y-ypred), fill = missing)) + 
   geom_violin() + 
   facet_wrap(. ~ target) + 
-  ylab('Predicted Ability - True Ability') +
+  ylab('Predicted Ability - Observed Ability') +
   xlab('Missing') + theme(legend.position = 'none')
 print(myplot.miss)
 ggsave(file.path(OUT_PATH, "./figs/missing.png"), plot = myplot.miss, dpi = DPI, width = WIDTH, height = HEIGHT)
